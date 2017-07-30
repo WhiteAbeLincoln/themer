@@ -8,7 +8,7 @@
 + Install packages with `pip install -r requirements.txt`
 
 ## RUNNING
-+ Run script with `themer -a <actions> <theme>`
++ Run script with `themer <theme>`
 
 ## ATTRIBUTION
 Templates are for the most part from the base16 project, and are copyright of their respective authors
