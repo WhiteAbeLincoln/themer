@@ -4,12 +4,12 @@ from glob import glob
 
 here = path.abspath(path.dirname(__file__))
 
-with open(path.join(here, 'README.md'), encoding='utf-8') as f:
+with open(path.join(here, 'README'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
     name='xthemer',
-    version='0.1.0',
+    version='0.1.1',
     description='xorg theming system, centered on base16',
     url='https://github.com/whiteabelincoln/themer',
     author='Abraham White',
