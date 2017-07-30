@@ -9,3 +9,6 @@
 
 ## RUNNING
 + Run script with `themer -a <actions> <theme>`
+
+## ATTRIBUTION
+Templates are for the most part from the base16 project, and are copyright of their respective authors
