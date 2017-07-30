@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Usage:
-  themer.py [-o FORMAT...] [--quiet | --verbose] THEME
+  themer.py [-m MODULE...] [--quiet | --verbose] THEME
   themer.py -h | --help | --version
 
 Arguments:
@@ -8,22 +8,20 @@ Arguments:
 
 Options:
   -h --help           show this
-  -o --output FORMAT  output format
+  -m --module MODULE  theme module
   --quiet             show less text
   --verbose           show more text
 """
 import sys
 import os
 import json
-import re
 import subprocess
 import os.path as path
-import shutil
 import glob
 from docopt import docopt
 import pystache
 
-# main :: IO()
+
 def main(argv=None):
     templates = {
         "xresources": write_xresources,
@@ -41,12 +39,13 @@ def main(argv=None):
     args = docopt(__doc__, argv=argv, version="0.1.0")
 
     share_path = path.join(os.getenv("HOME"), ".local/share/themer")
-    config_path = path.join(os.getenv("HOME"), ".config/themer")
+    local_config_path = path.join(os.getenv("HOME"), ".config/themer")
+    global_config_path = "/etc/xthemer/templates"
     if not path.isdir(share_path):
         os.makedirs(share_path)
-    if not path.isdir(config_path):
-        os.makedirs(config_path + "/templates")
-        print(f"Put the contents of ./templates in {config_path}/templates")
+    if not path.isdir(local_config_path) and not path.isdir(global_config_path):
+        os.makedirs(local_config_path + "/templates")
+        print(f"Put the contents of ./templates in {local_config_path}/templates")
         return 66
 
     if not path.isdir(args["THEME"]):
@@ -71,7 +70,7 @@ def main(argv=None):
 
     return 0
 
-# readColors :: String -> IO(String)
+
 def read_colors(theme_dir):
     # can read one of colors.json, or colors.yaml
     if path.isfile(path.join(theme_dir, "colors.json")):
@@ -89,7 +88,7 @@ def read_colors(theme_dir):
 
     sys.exit(66)
 
-# convertColorFormat :: [String] -> [(String, String)]
+
 def convert_color_format(colors):
     return {
         "scheme-name": "",
@@ -112,6 +111,7 @@ def convert_color_format(colors):
         "base0F": colors[15],
     }
 
+
 def generate_colors(colors):
     out = {}
     for key, val in colors.items():
@@ -132,11 +132,12 @@ def generate_colors(colors):
         out[f"{key}-dec-b"] = int("0x"+b, 16) / 255
     return out
 
+
 def merge_dict(colors):
     return {**{"scheme-name": "base16-custom", "scheme-author": ""},
             **generate_colors(colors),
-            **{"scheme-slug":"custom"}
-    }
+            **{"scheme-slug": "custom"}}
+
 
 def get_config_home():
     if os.getenv("XDG_CONFIG_HOME"):
@@ -144,14 +145,25 @@ def get_config_home():
     else:
         return path.join(os.getenv("HOME"), ".config")
 
+
 def get_template(name):
-    with open(path.join(os.getenv("HOME"), f".config/themer/templates/{name}.mustache"), "r") as t:
-        return "".join(t.readlines())
+    gpath = "/etc/xthemer/templates"
+    lpath = path.join(os.getenv("HOME"), ".config/themer/templates")
+    if path.isfile(path.join(lpath, f"{name}.mustache")):
+        with open(path.join(lpath, f"{name}.mustache"), "r") as t:
+            return "".join(t.readlines())
+    elif path.isfile(path.join(gpath, f"{name}.mustache")):
+        with open(path.join(gpath, f"{name}.mustache"), "r") as t:
+            return "".join(t.readlines())
+    else:
+        raise Exception(f"Template {name} does not exist")
+
 
 def write_xresources(colors):
     with open(path.join(os.getenv("HOME"), ".Xresources.d/colors"), "w") as f:
         f.write(pystache.render(get_template('xresources'), colors))
     subprocess.run(["xrdb", os.getenv("HOME") + "/.Xresources"])
+
 
 def write_bash(colors):
     with open(os.getenv("HOME") + "/.bash_colors", "w") as f:
@@ -164,6 +176,7 @@ def write_bash(colors):
             if idx > 9:
                 num = "%0.2X" % idx
             f.write('export COLORS_color{}="#{}"\n'.format(idx, colors[f"base{num}-hex"]))
+
 
 def write_termite(colors):
     config_home = get_config_home()
@@ -178,6 +191,7 @@ def write_termite(colors):
 
     subprocess.run(["killall", "-USR1", "termite"])
 
+
 def write_dunst(colors):
     config_home = get_config_home()
 
@@ -188,6 +202,7 @@ def write_dunst(colors):
             config_part = "".join(p.readlines())
 
         f.write("\n".join([config_part, color_part]))
+
 
 def write_vim(colors):
     with open(path.join(os.getenv("HOME"), ".vim_colors"), 'w') as f:
@@ -204,20 +219,24 @@ def write_vim(colors):
         except:
             pass
 
+
 def write_emacs(colors):
     with open(path.join(os.getenv("HOME"), ".emacs.d/private/themes/base16-custom-theme.el"), "w") as f:
         f.write(pystache.render(get_template('emacs'), colors))
+
 
 def write_wallpaper(directory):
     wallpaper = path.join(directory, "wallpaper")
     if path.isfile(wallpaper):
         subprocess.run(["feh", "--bg-fill", wallpaper])
 
+
 def write_rofi(colors):
     with open(path.join(os.getenv("HOME"), ".Xresources.d/rofi_colors"), "w") as f:
         f.write(pystache.render(get_template('rofi'), colors))
 
     subprocess.run(["xrdb", os.getenv("HOME") + "/.Xresources"])
+
 
 def write_bar(colors):
     dir = path.join(os.getenv("HOME"), ".config/rxbarrc")
