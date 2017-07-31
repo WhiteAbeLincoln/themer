@@ -4,13 +4,13 @@ from glob import glob
 
 here = path.abspath(path.dirname(__file__))
 
-with open(path.join(here, 'README'), encoding='utf-8') as f:
+with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
     name='xthemer',
-    version='0.1.1',
-    description='xorg theming system, centered on base16',
+    description='xorg theming system, using base16',
+    long_description=long_description,
     url='https://github.com/whiteabelincoln/themer',
     author='Abraham White',
     author_email='abelincoln.white@gmail.com',
@@ -24,12 +24,27 @@ setup(
     ],
     keywords='wm colorscheme base16 color theme wallpaper',
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
-    install_requires=['pyyaml', 'pystache', 'docopt'],
+    use_scm_version=True,
+    setup_requires=['setuptools_scm'],
+    install_requires=['pyyaml', 'pystache', 'docopt', 'stevedore'],
     python_requires='~=3.6',
-    data_files=[('/etc/xthemer/templates', glob(path.join(here, 'templates')+'/*'))],
+    data_files=[('/etc/xthemer/templates',
+                 glob(path.join(here, 'templates', '*')))],
     entry_points={
         'console_scripts': [
             'xthemer=xthemer:main'
+        ],
+        'xthemer.effects': [
+            'xresources = xthemer.plugin:Xresources',
+            'bash = xthemer.plugin:Bash',
+            'termite = xthemer.plugin:Termite',
+            'dunst = xthemer.plugin:Dunst',
+            'vim = xthemer.plugin:Vim',
+            'emacs = xthemer.plugin:Emacs',
+            'wallpaper = xthemer.plugin:Wallpaper',
+            'rofi = xthemer.plugin:Rofi',
+            'rxbar = xthemer.plugin:RxBar',
+            'current = xthemer.plugin:CurrentTheme',
         ]
     }
 )

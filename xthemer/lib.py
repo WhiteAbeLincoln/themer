@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Usage:
-  themer.py [-m MODULE...] [--quiet | --verbose] THEME
-  themer.py -h | --help | --version
+  xthemer [-m MODULE...] [--quiet | --verbose] THEME
+  xthemer -h | --help | --version
 
 Arguments:
   THEME  theme directory
@@ -15,77 +15,83 @@ Options:
 import sys
 import os
 import json
-import subprocess
 import os.path as path
-import glob
 from docopt import docopt
-import pystache
+from stevedore import NamedExtensionManager
+from xthemer import __version__
 
 options = {
     "verbose": False,
     "quiet": False
 }
 
+modules = [
+    "xresources",
+    "bash",
+    "vim",
+    "wallpaper",
+    "current"
+]
+
 
 def main(argv=None):
-    templates = {
-        "xresources": write_xresources,
-        "shell": write_bash,
-        "termite": write_termite,
-        "dunst": write_dunst,
-        "vim": write_vim,
-        "rofi": write_rofi,
-        "emacs": write_emacs,
-        "bar": write_bar
-    }
-
     if argv is None:
         argv = sys.argv[1:]
-    args = docopt(__doc__, argv=argv, version="0.1.0")
+    args = docopt(__doc__, argv=argv, version=__version__)
 
-    share_path = path.join(os.getenv("HOME"), ".local/share/themer")
-    local_config_path = path.join(os.getenv("HOME"), ".config/themer")
-    global_config_path = "/etc/xthemer/templates"
-    if not path.isdir(share_path):
-        os.makedirs(share_path)
-    if not path.isdir(local_config_path) and not path.isdir(global_config_path):
-        os.makedirs(local_config_path + "/templates")
-        print(
-            f"Put the contents of ./templates in {local_config_path}/templates")
-        return 66
+    dir_check()
 
     if not path.isdir(args["THEME"]):
+        print(f"ERROR: theme dir {args['THEME']} does not exist")
         return 66
-
-    colors = read_colors(args["THEME"])
-    formats = templates.keys()
 
     options["verbose"] = args["--verbose"]
     options["quiet"] = args["--quiet"]
+    colors = read_colors(args["THEME"])
+    config = load_config()
 
-    if "--module" in args:
-        if len(args["--module"]) == 1 and "," in args["--module"]:
-            args["--module"] = map(lambda s: s.strip(),
-                                   args["--module"][0].split(","))
-        elif len(args["--module"]) > 1:
-            formats = args["--module"]
+    if len(args["--module"]) == 1 and "," in args["--module"]:
+        config["modules"] = map(lambda s: s.strip(),
+                                args["--module"][0].split(","))
+    elif len(args["--module"]) > 1:
+        config["modules"] = args["--module"]
 
-    for f in formats:
-        if f in templates:
-            vprint(f"Running module {f}")
-            templates[f](colors)
+    mgr = load_modules(config["modules"], colors, args["THEME"])
 
-    vprint("Running module wallpaper")
-    write_wallpaper(args["THEME"])
+    def run(e):
+        vprint(f"Running module {e.name}")
+        e.obj.run()
 
-    vprint("Writing current theme to " + path.join(share_path, "current_theme"))
-    with open(path.join(share_path, "current_theme"), "w") as f:
-        f.write(args["THEME"])
+    mgr.map(run)
 
     if not options["quiet"]:
         print(f"Applied theme: {args['THEME']}")
 
     return 0
+
+
+def load_modules(names, colors, directory):
+    return NamedExtensionManager(
+        namespace="xthemer.effects",
+        names=names,
+        invoke_on_load=True,
+        invoke_args=(colors, directory),
+        on_missing_entrypoints_callback=
+        lambda p: print(f"ERROR: module {p} not found"),
+        on_load_failure_callback=
+        lambda m, e, ex: print(f"ERROR: module {e.name} failed to load")
+    )
+
+
+def dir_check():
+    local_config_path = path.join(os.getenv("HOME"), ".config", "xthemer")
+    global_config_path = "/etc/xthemer/templates"
+    if not path.isdir(local_config_path) and not path.isdir(global_config_path):
+        os.makedirs(path.join(local_config_path, "templates"))
+        print("ERROR: no templates found")
+        print(
+            f"Put the contents of ./templates in {local_config_path}/templates")
+        sys.exit(66)
 
 
 def vprint(args):
@@ -171,135 +177,41 @@ def get_config_home():
 def get_template(name):
     vprint(f"\tgetting template {name}")
     gpath = "/etc/xthemer/templates"
-    lpath = path.join(os.getenv("HOME"), ".config/themer/templates")
+    lpath = path.join(os.getenv("HOME"), ".config", "themer", "templates")
+
     if path.isfile(path.join(lpath, f"{name}.mustache")):
         vprint(f"\tfound template {name} in {lpath}")
+
         with open(path.join(lpath, f"{name}.mustache"), "r") as t:
             return "".join(t.readlines())
     elif path.isfile(path.join(gpath, f"{name}.mustache")):
         vprint(f"\tfound template {name} in {gpath}")
+
         with open(path.join(gpath, f"{name}.mustache"), "r") as t:
             return "".join(t.readlines())
     else:
         raise Exception(f"Template {name} does not exist")
 
 
-def write_xresources(colors):
-    with open(path.join(os.getenv("HOME"), ".Xresources.d/colors"), "w") as f:
-        f.write(pystache.render(get_template('xresources'), colors))
-    vprint("\treloading Xresources")
-    vprint("\t> xrdb ~/.Xresources")
-    subprocess.run(["xrdb", os.getenv("HOME") + "/.Xresources"])
+def render_template(name, colors):
+    import pystache
+    return pystache.render(get_template(name), colors)
 
 
-def write_bash(colors):
-    with open(os.getenv("HOME") + "/.bash_colors", "w") as f:
-        f.write('export COLORS_foreground="#{}"\n'.format(colors["base05-hex"]))
-        f.write('export COLORS_background="#{}"\n'.format(colors["base00-hex"]))
-        f.write(
-            'export COLORS_cursorColor="#{}"\n'.format(colors["base06-hex"]))
-
-        for idx in range(0, 15):
-            num = "0%d" % idx
-            if idx > 9:
-                num = "%0.2X" % idx
-            f.write('export COLORS_color{}="#{}"\n'.format(idx, colors[
-                f"base{num}-hex"]))
-
-
-def write_termite(colors):
-    config_home = get_config_home()
-    part_path = path.join(config_home, "termite/config.part")
-
-    with open(path.join(config_home, "termite/config"), 'w') as f:
-        color_part = pystache.render(get_template('termite'), colors)
-        config_part = ""
-        if path.exists(part_path):
-            with open(part_path, "r") as p:
-                config_part = "".join(p.readlines())
-
-        f.write("\n".join([config_part, color_part]))
-
-    vprint("\treloading termite")
-    vprint("\t> killall -USR1 termite")
-    subprocess.run(["killall", "-USR1", "termite"])
-
-
-def write_dunst(colors):
-    config_home = get_config_home()
-    part_path = path.join(config_home, "dunst/dunstrc.part")
-
-    with open(path.join(config_home, "dunst/dunstrc"), 'w') as f:
-        color_part = pystache.render(get_template('dunst'), colors)
-        config_part = ""
-        if path.exists(part_path):
-            with open(part_path, 'r') as p:
-                config_part = "".join(p.readlines())
-
-        f.write("\n".join([config_part, color_part]))
-
-
-def write_vim(colors):
-    with open(path.join(os.getenv("HOME"), ".vim_colors"), 'w') as f:
-        f.write(pystache.render(get_template('vim'), colors))
-
-    try:
-        from neovim import attach
-        neovimInstances = glob.glob('/tmp/nvim*/0')
-        vprint("\tfound neovim instances")
-        vprint(f"\tInstances: {neovimInstances}")
-        for p in neovimInstances:
-            nvim = attach('socket', path=p)
-            nvim.command('colorscheme base16-custom', async=True)
-            nvim.command('echo "reloaded theme"', async=True)
-            nvim.command('AirlineRefresh', async=True)
-    except:
-        pass
-
-
-def write_emacs(colors):
-    dirp = path.join(os.getenv("HOME"),
-                     ".emacs.d/private/themes")
-    if not path.isdir(dirp):
-        os.makedirs(dirp)
-    with open(path.join(dirp, "base16-custom-theme.el"), "w") as f:
-        f.write(pystache.render(get_template('emacs'), colors))
-
-
-def write_wallpaper(directory):
-    wallpaper = path.join(directory, "wallpaper")
-    if path.isfile(wallpaper):
-        subprocess.run(["feh", "--bg-fill", wallpaper])
-
-
-def write_rofi(colors):
-    with open(path.join(os.getenv("HOME"), ".Xresources.d/rofi_colors"),
-              "w") as f:
-        f.write(pystache.render(get_template('rofi'), colors))
-
-    vprint("\treloading Xresources")
-    vprint("\t> xrdb ~/.Xresources")
-    subprocess.run(["xrdb", path.join(os.getenv("HOME"), ".Xresources")])
-
-
-def write_bar(colors):
-    dirp = path.join(os.getenv("HOME"), ".config/rxbarrc")
-    if not os.path.isfile(dirp):
-        f = open(dirp, "w")
+def load_config():
+    import yaml
+    if path.isdir(get_config_home()):
+        try:
+            with open(path.join(get_config_home(), "xthemer", "config")) as f:
+                return yaml.load(f)
+        except FileNotFoundError:
+            return {"modules": modules}
     else:
-        f = open(dirp, "r+")
-
-    config = {}
-    try:
-        config = json.load(f)
-    except:
-        pass
-    config["fg"] = ["#" + colors["base05-hex"].upper()]
-    config["bg"] = ["#" + colors["base00-hex"].upper()]
-    f.seek(0)
-    json.dump(config, f)
-    f.truncate()
-    f.close()
+        try:
+            with open(path.join(os.getenv("HOME"), ".xthemer")) as f:
+                return yaml.load(f)
+        except FileNotFoundError:
+            return {"modules": modules}
 
 
 if __name__ == "__main__":
