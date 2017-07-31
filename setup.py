@@ -26,10 +26,12 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     use_scm_version=True,
     setup_requires=['setuptools_scm'],
-    install_requires=['pyyaml', 'pystache', 'docopt', 'stevedore'],
+    install_requires=['pyyaml', 'pystache', 'docopt', 'stevedore', 'termcolor'],
     python_requires='~=3.6',
     data_files=[('/etc/xthemer/templates',
-                 glob(path.join(here, 'templates', '*')))],
+                 glob(path.join(here, 'data', 'templates', '*')))
+                , ('/etc/xthemer', [path.join(here, 'data', 'config.yaml')])
+                ],
     entry_points={
         'console_scripts': [
             'xthemer=xthemer:main'

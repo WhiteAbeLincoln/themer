@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Usage:
-  xthemer [-m MODULE...] [--quiet | --verbose] THEME
-  xthemer -h | --help | --version
+  xthemer [-m MODULE...] [-q | -v...] [-f] THEME
+  xthemer [-m MODULE...] [-q | -v...] (-j | -y) [-]
+  xthemer --help | --version
 
 Arguments:
   THEME  theme directory
@@ -9,8 +10,11 @@ Arguments:
 Options:
   -h --help           show this
   -m --module MODULE  theme module
-  --quiet             show less text
-  --verbose           show more text
+  -f --file           indicates theme is a file, not directory
+  -j --json           stdin is in json format
+  -y --yaml           stdin is in yaml format
+  -q --quiet          show less text
+  -v --verbose        show more text
 """
 import sys
 import os
@@ -18,10 +22,14 @@ import json
 import os.path as path
 from docopt import docopt
 from stevedore import NamedExtensionManager
+from termcolor import colored
+from functools import reduce
 from xthemer import __version__
+from yaml import YAMLError
+from json import JSONDecodeError
 
 options = {
-    "verbose": False,
+    "verbose": 0,
     "quiet": False
 }
 
@@ -41,33 +49,48 @@ def main(argv=None):
 
     dir_check()
 
-    if not path.isdir(args["THEME"]):
-        print(f"ERROR: theme dir {args['THEME']} does not exist")
+    if args["THEME"] and\
+            (not path.isdir(args["THEME"]) or not path.isfile(args["THEME"])):
+        print(f"ERROR: theme {args['THEME']} does not exist")
         return 66
 
     options["verbose"] = args["--verbose"]
     options["quiet"] = args["--quiet"]
-    colors = read_colors(args["THEME"])
+    try:
+        colors = read_colors(args)
+    except YAMLError or JSONDecodeError:
+        raise Exception("Error parsing colors")
+        return -1
+
     config = load_config()
 
-    if len(args["--module"]) == 1 and "," in args["--module"]:
-        config["modules"] = map(lambda s: s.strip(),
-                                args["--module"][0].split(","))
-    elif len(args["--module"]) > 1:
-        config["modules"] = args["--module"]
+    modulelist = list(map(comma_to_array, args["--module"]))
+    newmodules = reduce(lambda x, y: x + y, modulelist, [])
+    if newmodules:
+        config["modules"] = newmodules
 
     mgr = load_modules(config["modules"], colors, args["THEME"])
 
-    def run(e):
+    def run_module(e):
         vprint(f"Running module {e.name}")
         e.obj.run()
 
-    mgr.map(run)
+    mgr.map(run_module)
 
     if not options["quiet"]:
-        print(f"Applied theme: {args['THEME']}")
+        print(colored("Applied theme: " +
+                      colored(f"{args['THEME']}", 'blue')
+                      , 'green'))
 
     return 0
+
+
+def comma_to_array(string):
+    if "," in string:
+        return list(map(lambda s: s.strip(),
+                        string.split(",")))
+    else:
+        return [string]
 
 
 def load_modules(names, colors, directory):
@@ -77,9 +100,10 @@ def load_modules(names, colors, directory):
         invoke_on_load=True,
         invoke_args=(colors, directory),
         on_missing_entrypoints_callback=
-        lambda p: print(f"ERROR: module {p} not found"),
+        lambda p: print(colored(f"ERROR: module {p} not found", "red")),
         on_load_failure_callback=
-        lambda m, e, ex: print(f"ERROR: module {e.name} failed to load")
+        lambda m, e, ex: print(colored(f"ERROR: module {e.name} failed to load"
+                               , "red"))
     )
 
 
@@ -94,27 +118,54 @@ def dir_check():
         sys.exit(66)
 
 
-def vprint(args):
-    if options["verbose"]:
-        print(args)
+def vprint(string, level=1):
+    if level == 1:
+        string = colored(string, 'green')
+    if level <= options["verbose"]:
+        print(string)
 
 
-def read_colors(theme_dir):
-    # can read one of colors.json, or colors.yaml
-    if path.isfile(path.join(theme_dir, "colors.json")):
-        with open(path.join(theme_dir, "colors.json")) as f:
-            out = json.load(f)
-            if isinstance(out, list):
-                return merge_dict(convert_color_format(out))
-            else:
-                return merge_dict(out)
+def read_colors(args):
+    if args["--json"]:
+        return read_json(sys.stdin, True)
+    if args["--yaml"]:
+        return read_yaml(sys.stdin, True)
+    if args["--file"]:
+        fn, ext = path.splitext(args["THEME"])
+        if ext == ".json":
+            return read_json(fn + ext)
+        else:
+            return read_yaml(fn + ext)
+    else:
+        if path.isfile(path.join(args["THEME"], "colors.json")):
+            return read_json(path.join(args["THEME"], "colors.json"))
 
-    if path.isfile(path.join(theme_dir, "colors.yaml")):
-        import yaml
-        with open(path.join(theme_dir, "colors.yaml")) as f:
-            return merge_dict(yaml.load(f))
+        if path.isfile(path.join(args["THEME"], "colors.yaml")):
+            return read_yaml(path.join(args["THEME"], "colors.yaml"))
 
     sys.exit(66)
+
+
+def read_json(file, stdin=False):
+    if not stdin:
+        with open(file) as f:
+            out = json.load(f)
+    else:
+        out = json.load(file)
+
+    if isinstance(out, list):
+        return merge_dict(convert_color_format(out))
+    else:
+        return merge_dict(out)
+
+
+def read_yaml(file, stdin=False):
+    import yaml
+    if not stdin:
+        with open(file) as f:
+            return merge_dict(yaml.load(f))
+    else:
+        return merge_dict(yaml.load(file))
 
 
 def convert_color_format(colors):
@@ -175,43 +226,50 @@ def get_config_home():
 
 
 def get_template(name):
-    vprint(f"\tgetting template {name}")
+    vprint(f"\tgetting template {name}", 2)
     gpath = "/etc/xthemer/templates"
-    lpath = path.join(os.getenv("HOME"), ".config", "themer", "templates")
+    lpath = path.join(os.getenv("HOME"), ".config", "xthemer", "templates")
 
     if path.isfile(path.join(lpath, f"{name}.mustache")):
-        vprint(f"\tfound template {name} in {lpath}")
+        vprint(f"\tfound template {name} in {lpath}", 2)
 
         with open(path.join(lpath, f"{name}.mustache"), "r") as t:
             return "".join(t.readlines())
     elif path.isfile(path.join(gpath, f"{name}.mustache")):
-        vprint(f"\tfound template {name} in {gpath}")
+        vprint(f"\tfound template {name} in {gpath}", 2)
 
         with open(path.join(gpath, f"{name}.mustache"), "r") as t:
             return "".join(t.readlines())
     else:
+        vprint(f"\tGot error getting template {name}", 2)
+        vprint(f"\t{name} does not exist", 2)
         raise Exception(f"Template {name} does not exist")
 
 
 def render_template(name, colors):
     import pystache
-    return pystache.render(get_template(name), colors)
+    data = pystache.render(get_template(name), colors)
+    vprint(f"\trendered template {name}", 3)
+    vprint(f"\toutput:\n{data}", 3)
+    return data
 
 
 def load_config():
     import yaml
-    if path.isdir(get_config_home()):
-        try:
-            with open(path.join(get_config_home(), "xthemer", "config")) as f:
-                return yaml.load(f)
-        except FileNotFoundError:
-            return {"modules": modules}
+    gpath = "/etc/xthemer/config.yaml"
+    lpath = path.join(get_config_home(), "xthemer", "config.yaml")
+    hpath = path.join(os.getenv("HOME"), ".xthemer")
+    if path.exists(lpath):
+        with open(lpath) as f:
+            return yaml.load(f)
+    elif path.exists(hpath):
+        with open(hpath) as f:
+            return yaml.load(f)
+    elif path.exists(gpath):
+        with open(gpath) as f:
+            return yaml.load(f)
     else:
-        try:
-            with open(path.join(os.getenv("HOME"), ".xthemer")) as f:
-                return yaml.load(f)
-        except FileNotFoundError:
-            return {"modules": modules}
+        return {"modules": modules}
 
 
 if __name__ == "__main__":

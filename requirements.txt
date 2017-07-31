@@ -2,3 +2,4 @@ pystache
 docopt
 pyyaml
 stevedore
+termcolor

@@ -9,8 +9,8 @@ class Xresources(PluginBase):
     def run(self):
         with open(path.join(os.getenv("HOME"), ".Xresources.d", "colors"), "w") as f:
             f.write(render_template("xresources", self.colors))
-        vprint("\treloading Xresources")
-        vprint("\t> xrdb ~/.Xresources")
+        vprint("\treloading Xresources", 2)
+        vprint("\t> xrdb ~/.Xresources", 2)
         subprocess.run(["xrdb", path.join(os.getenv("HOME"), ".Xresources")])
 
 
@@ -46,8 +46,8 @@ class Termite(PluginBase):
 
             f.write("\n".join([config_part, color_part]))
 
-        vprint("\treloading termite")
-        vprint("\t> killall -USR1 termite")
+        vprint("\treloading termite", 2)
+        vprint("\t> killall -USR1 termite", 2)
         subprocess.run(["killall", "-USR1", "termite"])
 
 
@@ -75,15 +75,15 @@ class Vim(PluginBase):
             from neovim import attach
             from glob import glob
             neovimInstances = glob('/tmp/nvim*/0')
-            vprint("\tfound neovim instances")
-            vprint(f"\tInstances: {neovimInstances}")
+            vprint("\tfound neovim instances", 2)
+            vprint(f"\tInstances: {neovimInstances}", 2)
             for p in neovimInstances:
                 nvim = attach('socket', path=p)
                 nvim.command('colorscheme base16-custom', async=True)
                 nvim.command('echo "reloaded theme"', async=True)
                 nvim.command('AirlineRefresh', async=True)
         except ImportError:
-            vprint("\tno neovim library. continuing")
+            vprint("\tno neovim library. continuing", 2)
 
 
 class Emacs(PluginBase):
@@ -109,9 +109,9 @@ class Rofi(PluginBase):
                   "w") as f:
             f.write(render_template("rofi", self.colors))
 
-    vprint("\treloading Xresources")
-    vprint("\t> xrdb ~/.Xresources")
-    subprocess.run(["xrdb", path.join(os.getenv("HOME"), ".Xresources")])
+        vprint("\treloading rofi Xresources", 2)
+        vprint("\t> xrdb ~/.Xresources", 2)
+        subprocess.run(["xrdb", path.join(os.getenv("HOME"), ".Xresources")])
 
 
 class RxBar(PluginBase):
@@ -141,7 +141,7 @@ class CurrentTheme(PluginBase):
         share_path = path.join(os.getenv("HOME"), ".local", "share", "themer")
         if not path.isdir(share_path):
             os.makedirs(share_path)
-        vprint("Writing current theme to " +
-               path.join(share_path, "current_theme"))
+        vprint("\tWriting current theme to " +
+               path.join(share_path, "current_theme"), 2)
         with open(path.join(share_path, "current_theme"), "w") as f:
             f.write(self.dir)
