@@ -1,6 +1,7 @@
 from setuptools import setup, find_packages
 from os import path
 from glob import glob
+import xdg
 
 here = path.abspath(path.dirname(__file__))
 
@@ -28,10 +29,14 @@ setup(
     setup_requires=['setuptools_scm'],
     install_requires=['xdg', 'pyyaml', 'pystache', 'docopt', 'stevedore', 'termcolor'],
     python_requires='~=3.6',
-    data_files=[('/etc/xthemer/templates',
-                 glob(path.join(here, 'data', 'templates', '*')))
-                , ('/etc/xthemer', [path.join(here, 'data', 'config.yaml')])
-                ],
+    data_files=
+        [ ( path.join(xdg.XDG_CONFIG_HOME, 'xthemer', 'templates')
+          , glob(path.join(here, 'data', 'templates', '*'))
+          )
+        , ( path.join(xdg.XDG_CONFIG_HOME, 'xthemer')
+          , [path.join(here, 'data', 'config.yaml')]
+          )
+        ],
     entry_points={
         'console_scripts': [
             'xthemer=xthemer:main'
