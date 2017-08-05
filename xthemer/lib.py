@@ -19,6 +19,7 @@ Options:
 import sys
 import os
 import json
+import xdg
 import os.path as path
 from docopt import docopt
 from stevedore import NamedExtensionManager
@@ -50,8 +51,8 @@ def main(argv=None):
     dir_check()
 
     if args["THEME"] and\
-            (not path.isdir(args["THEME"]) or not path.isfile(args["THEME"])):
-        print(f"ERROR: theme {args['THEME']} does not exist")
+            (not path.isdir(args["THEME"]) and not path.isfile(args["THEME"])):
+        print(f"ERROR: theme {args['THEME']} does not exist", file=sys.stderr)
         return 66
 
     options["verbose"] = args["--verbose"]
@@ -60,22 +61,27 @@ def main(argv=None):
         colors = read_colors(args)
     except YAMLError or JSONDecodeError:
         raise Exception("Error parsing colors")
-        return -1
 
     config = load_config()
 
     modulelist = list(map(comma_to_array, args["--module"]))
     newmodules = reduce(lambda x, y: x + y, modulelist, [])
     if newmodules:
-        config["modules"] = newmodules
+        config["plugins"] = newmodules
 
-    mgr = load_modules(config["modules"], colors, args["THEME"])
+    mgr = load_modules(config["plugins"])
 
-    def run_module(e):
+    def run_module(e, colors, directory, config):
+        dir(e.plugin)
         vprint(f"Running module {e.name}")
-        e.obj.run()
+        pluginargs = {}
+        if e.name in config:
+            pluginargs = config[e.name]
+        plugin = e.plugin(colors=colors, dir=directory, plugin=pluginargs)
+        dir(plugin)
+        plugin.run()
 
-    mgr.map(run_module)
+    mgr.map(run_module, colors, args["THEME"], config)
 
     if not options["quiet"]:
         print(colored("Applied theme: " +
@@ -93,17 +99,17 @@ def comma_to_array(string):
         return [string]
 
 
-def load_modules(names, colors, directory):
+def load_modules(names):
     return NamedExtensionManager(
         namespace="xthemer.effects",
         names=names,
-        invoke_on_load=True,
-        invoke_args=(colors, directory),
+        invoke_on_load=False,
+        propagate_map_exceptions=True,
         on_missing_entrypoints_callback=
-        lambda p: print(colored(f"ERROR: module {p} not found", "red")),
+        lambda p: print(colored(f"ERROR: module {p} not found", "red"), file=sys.stderr),
         on_load_failure_callback=
         lambda m, e, ex: print(colored(f"ERROR: module {e.name} failed to load"
-                               , "red"))
+                               , "red"), file=sys.stderr)
     )
 
 
@@ -112,7 +118,7 @@ def dir_check():
     global_config_path = "/etc/xthemer/templates"
     if not path.isdir(local_config_path) and not path.isdir(global_config_path):
         os.makedirs(path.join(local_config_path, "templates"))
-        print("ERROR: no templates found")
+        print("ERROR: no templates found", file=sys.stderr)
         print(
             f"Put the contents of ./templates in {local_config_path}/templates")
         sys.exit(66)
@@ -219,16 +225,17 @@ def merge_dict(colors):
 
 
 def get_config_home():
-    if os.getenv("XDG_CONFIG_HOME"):
-        return os.getenv("XDG_CONFIG_HOME")
-    else:
-        return path.join(os.getenv("HOME"), ".config")
+    return path.join(xdg.XDG_CONFIG_HOME, "xthemer")
+
+
+def get_data_home():
+    return path.join(xdg.XDG_DATA_HOME, "xthemer")
 
 
 def get_template(name):
     vprint(f"\tgetting template {name}", 2)
     gpath = "/etc/xthemer/templates"
-    lpath = path.join(os.getenv("HOME"), ".config", "xthemer", "templates")
+    lpath = path.join(get_config_home(), "templates")
 
     if path.isfile(path.join(lpath, f"{name}.mustache")):
         vprint(f"\tfound template {name} in {lpath}", 2)
@@ -241,7 +248,7 @@ def get_template(name):
         with open(path.join(gpath, f"{name}.mustache"), "r") as t:
             return "".join(t.readlines())
     else:
-        vprint(f"\tGot error getting template {name}", 2)
+        vprint(f"\tError getting template {name}", 2)
         vprint(f"\t{name} does not exist", 2)
         raise Exception(f"Template {name} does not exist")
 
@@ -257,7 +264,7 @@ def render_template(name, colors):
 def load_config():
     import yaml
     gpath = "/etc/xthemer/config.yaml"
-    lpath = path.join(get_config_home(), "xthemer", "config.yaml")
+    lpath = path.join(get_config_home(), "config.yaml")
     hpath = path.join(os.getenv("HOME"), ".xthemer")
     if path.exists(lpath):
         with open(lpath) as f:

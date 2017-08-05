@@ -26,7 +26,7 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     use_scm_version=True,
     setup_requires=['setuptools_scm'],
-    install_requires=['pyyaml', 'pystache', 'docopt', 'stevedore', 'termcolor'],
+    install_requires=['xdg', 'pyyaml', 'pystache', 'docopt', 'stevedore', 'termcolor'],
     python_requires='~=3.6',
     data_files=[('/etc/xthemer/templates',
                  glob(path.join(here, 'data', 'templates', '*')))

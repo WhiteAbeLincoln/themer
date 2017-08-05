@@ -1,13 +1,15 @@
 import abc
 
 
-class PluginBase(object, metaclass=abc.ABCMeta):
+class XThemerPlugin(object, metaclass=abc.ABCMeta):
     """Base class for a xthemer module plugin
     """
 
-    def __init__(self, colors, directory):
-        self.colors = colors
-        self.dir = directory
+    def __init__(self, **kwargs):
+        if 'colors' in kwargs:
+            self.colors = kwargs['colors']
+        if 'dir' in kwargs:
+            self.dir = kwargs['dir']
 
     @abc.abstractmethod
     def run(self):

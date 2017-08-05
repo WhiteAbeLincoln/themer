@@ -3,3 +3,4 @@ docopt
 pyyaml
 stevedore
 termcolor
+xdg

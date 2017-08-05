@@ -1,5 +1,5 @@
 from .base import (
-    PluginBase
+    XThemerPlugin
 )
 
 from .plugins import (
