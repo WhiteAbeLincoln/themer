@@ -1,5 +1,5 @@
+confuse
 pystache
-docopt
 pyyaml
 stevedore
 termcolor

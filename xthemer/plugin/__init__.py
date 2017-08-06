@@ -3,6 +3,6 @@ from .base import (
 )
 
 from .plugins import (
-    Xresources, Bash, Termite, Dunst, Vim, Emacs, Wallpaper, Rofi, RxBar,
-    CurrentTheme
+    Xresources, BashColors, Shell, Termite, Dunst, Vim, Emacs, Wallpaper, Rofi,
+    CurrentTheme, Template
 )

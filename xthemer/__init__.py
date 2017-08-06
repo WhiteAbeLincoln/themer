@@ -7,5 +7,5 @@ except DistributionNotFound:
     pass
 
 from .lib import (
-    main, vprint, render_template, get_config_home, get_data_home
+    main, render_template, get_config_home, get_data_home, config
 )
